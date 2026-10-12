@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Test — Control Centre</title>
+<style>
+ :root{--bg:#16191e;--card:#1e2229;--bd:#323841;--fg:#eee;--mu:#9aa3ad;--am:#f2b33d;--ok:#4fd18b;--no:#ef5a5a}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif}
+ header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--bd);gap:12px;flex-wrap:wrap}
+ main{max-width:860px;margin:0 auto;padding:20px}
+ .card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:12px}
+ input,textarea{background:var(--bg);border:1px solid var(--bd);color:var(--fg);border-radius:6px;padding:9px 10px;font:inherit}
+ button{border:0;border-radius:6px;padding:9px 14px;font-weight:600;cursor:pointer}
+ .am{background:var(--am);color:#1a1408}.ok{background:var(--ok);color:#06210f}.no{background:var(--no);color:#fff}
+ .gh{background:transparent;color:var(--mu);border:1px solid var(--bd)}
+ pre{white-space:pre-wrap;word-break:break-all;background:var(--bg);padding:10px;border-radius:6px;max-height:240px;overflow:auto;font-size:12px;margin:10px 0 0}
+ .mu{color:var(--mu);font-size:13px}
+ .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+ .tag{font-size:11px;text-transform:uppercase;letter-spacing:.1em;padding:3px 9px;border-radius:99px;border:1px solid var(--bd)}
+ .pending{color:var(--am)}.approved{color:var(--ok)}.rejected{color:var(--no)}
+ #login{max-width:360px;margin:80px auto}#login input{width:100%;margin-bottom:10px}
+ h1{font-size:20px;margin:0}
+ .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+ .pill{min-width:36px;text-align:center;font-size:11px;background:rgba(255,255,255,.08);border-radius:99px;padding:1px 7px}
+ .err{color:var(--no);font-size:13px;margin:6px 0 0}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script></head>
+<body>
+<header><strong id="title"></strong><span class="row"><span id="status" class="mu"></span><button id="out" class="gh" style="display:none">Sign out</button></span></header>
+<main>
+ <div id="login" class="card" style="display:none">
+  <h1>Enter password</h1>
+  <p class="mu" style="margin:6px 0 14px">This control centre is password-protected.</p>
+  <input id="pw" type="password" placeholder="Password" autofocus>
+  <button id="si" class="am" style="width:100%">Sign in</button>
+  <p id="le" class="err"></p>
+ </div>
+ <div id="app" style="display:none">
+  <div class="toolbar"><button class="am" data-f="pending">Pending <span id="pcount" class="pill">0</span></button><button class="gh" data-f="all">All</button><span id="count" class="mu"></span></div>
+  <div id="list"></div>
+ </div>
+</main>
+<script>
+var C={"url":"https://neqdeykygiaebcvwlevt.supabase.co","key":"sb_publishable_jap30BZjhdKTIomW0GQ8Qg_2EGHFywh","projectId":"3ede0fad-2b6e-4dd2-b35b-ee8f704d20f4","name":"Test","valueLabel":"Value","presets":[10,20,500]};
+var sb=supabase.createClient(C.url,C.key,{auth:{persistSession:false}});
+var filter="pending",rows=[],poll=null;
+var STORE="cc_tok_"+C.projectId;
+function getTok(){try{return localStorage.getItem(STORE)}catch(e){return null}}
+function setTok(t){try{localStorage.setItem(STORE,t)}catch(e){}}
+function clearTok(){try{localStorage.removeItem(STORE)}catch(e){}}
+document.getElementById("title").textContent=C.name+" · Control Centre";
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+async function load(){
+ var t=getTok();if(!t){boot();return}
+ var r=await sb.rpc("cc_list_requests",{_token:t,_only_pending:false});
+ if(r.error){if(/expired|session/i.test(r.error.message)){clearTok();boot();return}return}
+ rows=r.data||[];render();
+}
+function render(){
+ var pending=rows.filter(function(x){return x.status==="pending"}).length;
+ document.getElementById("pcount").textContent=pending;
+ var list=rows.filter(function(x){return filter==="all"||x.status==="pending"});
+ document.getElementById("count").textContent="Live · "+list.length+" shown";
+ document.getElementById("list").innerHTML=list.map(function(x){
+  var body=x.payload&&x.payload.logs!=null?x.payload.logs:JSON.stringify(x.payload,null,2);
+  var act=x.status==="pending"?'<div class="row" style="margin-top:12px"><input type="number" step="any" placeholder="'+esc(C.valueLabel)+'" id="v-'+x.id+'" style="width:120px">'+
+   C.presets.map(function(p){return '<button class="gh" onclick="document.getElementById(\'v-'+x.id+'\').value='+p+'">'+p+'</button>'}).join("")+
+   '</div><div class="row" style="margin-top:8px"><input placeholder="Note (optional)" id="n-'+x.id+'" style="flex:1;min-width:160px"></div><div class="row" style="margin-top:8px"><button class="ok" onclick="decide(\''+x.id+'\',\'approved\')">Approve</button><button class="no" onclick="decide(\''+x.id+'\',\'rejected\')">Reject</button></div>'
+   :'<p class="mu" style="margin:10px 0 0">'+(x.status==="approved"?esc(C.valueLabel)+": <b>"+esc(x.value)+"</b> · ":"")+"decided "+new Date(x.decided_at).toLocaleString()+(x.note?" · "+esc(x.note):"")+'</p>';
+  return '<div class="card"><div class="row" style="justify-content:space-between"><b>#'+esc(x.reference)+(x.submitter?" · "+esc(x.submitter):"")+'</b><span class="tag '+x.status+'">'+x.status+'</span></div><p class="mu" style="margin:4px 0 0">'+new Date(x.created_at).toLocaleString()+'</p><pre>'+esc(body)+'</pre>'+act+'</div>';
+ }).join("")||'<div class="card mu">Nothing here.</div>';
+}
+async function decide(id,d){
+ var t=getTok();if(!t)return;
+ var v=document.getElementById("v-"+id).value,n=document.getElementById("n-"+id).value;
+ if(d==="approved"&&v===""){alert("Enter a value to approve");return}
+ var r=await sb.rpc("cc_decide",{_token:t,_request_id:id,_decision:d,_value:d==="approved"?Number(v):null,_note:n||null});
+ if(r.error){alert(r.error.message);return}load();
+}
+document.querySelectorAll("[data-f]").forEach(function(b){b.onclick=function(){filter=b.dataset.f;document.querySelectorAll("[data-f]").forEach(function(o){o.className=o===b?"am":"gh"});render()}});
+document.getElementById("si").onclick=async function(){
+ var pw=document.getElementById("pw").value;
+ var r=await sb.rpc("cc_login",{_project_id:C.projectId,_password:pw});
+ if(r.error||!r.data){document.getElementById("le").textContent=(r.error&&r.error.message)||"Login failed";return}
+ setTok(r.data);document.getElementById("pw").value="";boot();
+};
+document.getElementById("out").onclick=async function(){var t=getTok();if(t)await sb.rpc("cc_logout",{_token:t});clearTok();boot()};
+async function boot(){
+ if(poll){clearInterval(poll);poll=null}
+ var t=getTok();
+ if(!t){document.getElementById("login").style.display="block";document.getElementById("app").style.display="none";document.getElementById("out").style.display="none";document.getElementById("status").textContent="";return}
+ var r=await sb.rpc("cc_get_project",{_token:t});
+ if(r.error){clearTok();boot();return}
+ document.getElementById("login").style.display="none";
+ document.getElementById("app").style.display="block";
+ document.getElementById("out").style.display="inline-block";
+ document.getElementById("status").textContent="Signed in";
+ await load();
+ poll=setInterval(load,4000);
+}
+boot();
+</script></body></html>
